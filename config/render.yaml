@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: ar-framework
+    runtime: static
+    staticPublishPath: .
+    headers:
+      - path: /*
+        name: Permissions-Policy
+        value: "camera=*, xr-spatial-tracking=*"
+      - path: /*
+        name: Feature-Policy
+        value: "camera *"
+      - path: /*.usdz
+        name: Content-Type
+        value: "model/vnd.usdz+zip"

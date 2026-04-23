@@ -1,0 +1,12 @@
+/*
+  CRITICAL: Required for WebXR camera access and native iOS AR Quick Look compatibility.
+*/
+Permissions-Policy: camera=*, microphone=(), xr-spatial-tracking=*
+Feature-Policy: camera *; xr-spatial-tracking *
+
+/* 
+  MIME Type for iOS AR Quick Look. 
+  If this is missing, iPhone will show "Object failed to open".
+*/
+/*.usdz
+  Content-Type: model/vnd.usdz+zip

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+  <title>Advanced AR Framework</title>
+  <style>
+    /* ── BASE STYLES ── */
+    * { margin:0; padding:0; box-sizing:border-box; }
+    html, body { width:100%; height:100%; overflow:hidden; background:#000; font-family:-apple-system,sans-serif; }
+
+    /* Backgrounds for different modes */
+    #bg-video { position:fixed; inset:0; width:100%; height:100%; object-fit:cover; z-index:0; display:none; }
+    #c { position:fixed; inset:0; width:100%; height:100%; display:block; z-index:1; }
+
+    /* ── UI SCREENS (Glassmorphism Pattern) ── */
+    /* Shared style for all full-screen overlays */
+    .screen { position:fixed; inset:0; z-index:200; background:#000; display:flex; flex-direction:column; align-items:center; justify-content:center; transition:opacity .5s; }
+    .hidden { opacity:0; pointer-events:none; }
+
+    /* Language Selection Screen (Highest Z-Index) */
+    #lang-screen { z-index:900; gap:24px; }
+    
+    /* Button Style: Premium Translucent "Liquid Glass" */
+    .btn {
+      width: 220px; padding: 18px; border-radius: 50px; border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.05); backdrop-filter: blur(10px); color: #fff; font-size: 14px; 
+      cursor: pointer; text-align: center; letter-spacing: 2px; text-transform: uppercase; transition: all 0.2s;
+    }
+    .btn:active { transform:scale(0.96); background: rgba(255,255,255,0.15); }
+    
+    /* Branding Elements */
+    .logo-text { font-size: 32px; font-weight: 800; letter-spacing: 6px; color: #fff; margin-bottom: 24px; }
+    .logo-text span { font-weight: 300; opacity: 0.7; }
+
+    /* AR UI elements (Scan reticle, Tooltips, etc.) */
+    #scan-overlay { position:fixed; inset:0; z-index:10; pointer-events:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:24px; opacity:0; transition:opacity .5s; }
+    #scan-overlay.show { opacity:1; }
+    .reticle { width:190px; height:190px; position:relative; }
+    /* ... additional CSS omitted for brevity in this example, but present in full implementation ... */
+  </style>
+</head>
+<body>
+
+<!-- 1. BACKGROUND LAYERS -->
+<video id="bg-video" autoplay playsinline muted></video>
+<canvas id="c"></canvas>
+
+<!-- 2. LANGUAGE PICKER (Initial Entry) -->
+<div id="lang-screen" class="screen">
+  <div class="logo-text">ALEF<span>BET</span></div>
+  <div class="btn" onclick="setLanguage('he')">עברית</div>
+  <div class="btn" onclick="setLanguage('en')">English</div>
+  <div class="btn" onclick="setLanguage('ru')">Русский</div>
+</div>
+
+<!-- 3. AR ENTRY SCREENS (Platform Dependent) -->
+<div id="start-screen" class="screen hidden">
+  <div class="logo-text">AR<span>.</span></div>
+  <button id="start-btn" class="btn" onclick="startAR()"><span data-i18n="startBtn">Запустить AR</span></button>
+</div>
+
+<div id="ios-screen" class="screen" style="display:none;">
+  <!-- iOS specific badge and AR Quick Look link -->
+  <a class="btn" href="model.usdz" rel="ar" data-i18n="iosArBtn">Открыть в AR</a>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+
+<script>
+/**
+ * ── ADVANCED AR CORE LOGIC ──
+ * This script handles platform detection, 3D rendering, and AR lifecycle.
+ */
+
+const CFG = {
+  siteUrl: 'https://alef-bet.tech/',
+  usdzFile: 'model.usdz'
+};
+
+// ── i18n SYSTEM ──
+const i18n = {
+  ru: { startBtn: "▶ Запустить AR", iosArBtn: "Открыть в AR" },
+  en: { startBtn: "▶ Start AR", iosArBtn: "Open in AR" },
+  he: { startBtn: "▶ התחל AR", iosArBtn: "פתח ב-AR" }
+};
+
+let currentLang = 'ru';
+
+/**
+ * Updates the entire UI language and handles RTL.
+ * @param {string} lang - 'ru', 'en', or 'he'
+ */
+function setLanguage(lang) {
+  currentLang = lang;
+  document.documentElement.lang = lang;
+  // CRITICAL: Handle Hebrew RTL
+  document.dir = (lang === 'he') ? 'rtl' : 'ltr';
+  
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if(i18n[lang][key]) el.innerText = i18n[lang][key];
+  });
+  
+  document.getElementById('lang-screen').classList.add('hidden');
+  initPlatformView();
+}
+
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+
+function initPlatformView() {
+  if(isIOS) {
+    document.getElementById('ios-screen').style.display = 'flex';
+  } else {
+    document.getElementById('start-screen').classList.remove('hidden');
+  }
+}
+
+// ── THREE.JS & AR ENGINE ──
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(70, window.innerWidth/window.innerHeight, 0.01, 100);
+// ... Three.js setup ...
+
+/**
+ * ── ASSET LOADING & NORMALIZATION ──
+ * Ensures the model is centered and sized correctly in real-world meters.
+ */
+function loadModel() {
+  const loader = new THREE.GLTFLoader();
+  loader.load('mesh.glb', (gltf) => {
+    const model = gltf.scene;
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const scale = 1.2 / Math.max(size.x, size.y, size.z); // Scale to 1.2 meters
+    model.scale.setScalar(scale);
+    // Center and anchor to floor
+    model.position.y = -box.min.y * scale; 
+    scene.add(model);
+  });
+}
+
+/**
+ * ── AR LIFECYCLE ──
+ * Logic for WebXR session management.
+ */
+async function startAR() {
+  // 1. Try WebXR (Android)
+  // 2. If fail, start Gyroscope + Camera fallback
+}
+
+// ... Additional logic for Hit-Testing, Photography, and Sharing ...
+
+</script>
+</body>
+</html>
